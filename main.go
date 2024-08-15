@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+
+	"github.com/FriskyWombat/chirpy/internal/database"
 )
 
 func main() {
@@ -19,6 +21,8 @@ func main() {
 	serverMux.HandleFunc("GET /api/chirps", apiCfg.chirpsGetAllHandleFunc)
 	serverMux.HandleFunc("GET /api/chirps/{id}", apiCfg.chirpGetHandleFunc)
 	serverMux.HandleFunc("POST /api/users", apiCfg.newUserHandleFunc)
+	serverMux.HandleFunc("POST /api/login", apiCfg.loginHandleFunc)
+	serverMux.HandleFunc("PUT /api/users", apiCfg.updateUserHandleFunc)
 
 	server := http.Server{
 		Addr:    ":8080",
@@ -120,7 +124,9 @@ func (cfg *apiConfig) chirpsGetAllHandleFunc(w http.ResponseWriter, r *http.Requ
 
 func (cfg *apiConfig) newUserHandleFunc(w http.ResponseWriter, r *http.Request) {
 	type userReq struct {
-		Email string `json:"email"`
+		Password     string `json:"password"`
+		Email        string `json:"email"`
+		ExpiresAfter int    `json:"expires_in_seconds"`
 	}
 	req := userReq{}
 	decoder := json.NewDecoder(r.Body)
@@ -129,11 +135,39 @@ func (cfg *apiConfig) newUserHandleFunc(w http.ResponseWriter, r *http.Request) 
 		respondWithError(w, 500, "Something went wrong")
 		return
 	}
-	chirp, err := cfg.db.CreateUser(req.Email)
+	user, err := cfg.db.CreateUser(req.Email, req.Password)
 	if err != nil {
-		fmt.Println(err)
-		respondWithError(w, 500, "Unable to access database")
+		respondWithError(w, 500, err.Error())
 		return
 	}
-	respondWithJSON(w, 201, chirp)
+	u := database.SafeUser{ID: user.ID, Email: user.Email}
+	respondWithJSON(w, 201, u)
+}
+
+func (cfg *apiConfig) updateUserHandleFunc(w http.ResponseWriter, r *http.Request) {
+
+}
+
+func (cfg *apiConfig) loginHandleFunc(w http.ResponseWriter, r *http.Request) {
+	type userReq struct {
+		Password string `json:"password"`
+		Email    string `json:"email"`
+	}
+	req := userReq{}
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&req)
+	if err != nil {
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+	u, ok, err := cfg.db.VerifyCredentials(req.Email, req.Password)
+	if err != nil {
+		respondWithError(w, 500, "Unable to find user")
+		return
+	}
+	if !ok {
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+	respondWithJSON(w, 200, u)
 }
