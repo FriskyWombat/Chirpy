@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 func main() {
@@ -17,6 +16,7 @@ func main() {
 	serverMux.HandleFunc("/api/reset", apiCfg.metricsResetHandleFunc)
 	serverMux.HandleFunc("POST /api/chirps", apiCfg.chirpHandleFunc)
 	serverMux.HandleFunc("GET /api/chirps", apiCfg.chirpGetHandleFunc)
+	serverMux.HandleFunc("GET /api/chirps/:id", apiCfg.chirpGetHandleFunc)
 
 	server := http.Server{
 		Addr:    ":8080",
@@ -60,25 +60,6 @@ func (cfg *apiConfig) metricsResetHandleFunc(w http.ResponseWriter, r *http.Requ
 	cfg.fileserverHits = 0
 }
 
-func cleanChirp(body string) string {
-	words := strings.Fields(body)
-	profaneIndices := []int{}
-	for i, word := range words {
-		word = strings.ToLower(word)
-		if word == "kerfuffle" || word == "sharbert" || word == "fornax" {
-			profaneIndices = append(profaneIndices, i)
-		}
-	}
-	if len(profaneIndices) > 0 {
-
-		for _, i := range profaneIndices {
-			words[i] = "****"
-		}
-		return strings.Join(words, " ")
-	}
-	return body
-}
-
 func (cfg *apiConfig) chirpHandleFunc(w http.ResponseWriter, r *http.Request) {
 	type chirpReq struct {
 		Body string `json:"body"`
@@ -94,14 +75,14 @@ func (cfg *apiConfig) chirpHandleFunc(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, 400, "Chirp is too long")
 		return
 	}
-	type chirpResp struct {
-		ID   int    `json:"id"`
-		Body string `json:"body"`
-	}
 	body := cleanChirp(req.Body)
-	id := cfg.addChirp(body)
-	c := chirpResp{ID: id, Body: body}
-	respondWithJSON(w, 201, c)
+	chirp, err := cfg.db.CreateChirp(body)
+	if err != nil {
+		fmt.Println(err)
+		respondWithError(w, 500, "Unable to access database")
+		return
+	}
+	respondWithJSON(w, 201, chirp)
 }
 
 func (cfg *apiConfig) chirpGetHandleFunc(w http.ResponseWriter, r *http.Request) {
@@ -109,12 +90,10 @@ func (cfg *apiConfig) chirpGetHandleFunc(w http.ResponseWriter, r *http.Request)
 		ID   int    `json:"id"`
 		Body string `json:"body"`
 	}
-	chirps := chirpsListResp{}
-	for i, c := range cfg.chirps {
-		chirps = append(chirps, struct {
-			ID   int    `json:"id"`
-			Body string `json:"body"`
-		}{ID: i, Body: c})
+	c, err := cfg.db.GetChirps()
+	if err != nil {
+		respondWithError(w, 500, "Unable to access database")
+		return
 	}
-	respondWithJSON(w, 200, chirps)
+	respondWithJSON(w, 200, c)
 }
