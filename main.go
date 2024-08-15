@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 )
 
 func main() {
@@ -15,8 +16,9 @@ func main() {
 	serverMux.HandleFunc("GET /admin/metrics", apiCfg.metricsHandleFunc)
 	serverMux.HandleFunc("/api/reset", apiCfg.metricsResetHandleFunc)
 	serverMux.HandleFunc("POST /api/chirps", apiCfg.chirpHandleFunc)
-	serverMux.HandleFunc("GET /api/chirps", apiCfg.chirpGetHandleFunc)
-	serverMux.HandleFunc("GET /api/chirps/:id", apiCfg.chirpGetHandleFunc)
+	serverMux.HandleFunc("GET /api/chirps", apiCfg.chirpsGetAllHandleFunc)
+	serverMux.HandleFunc("GET /api/chirps/{id}", apiCfg.chirpGetHandleFunc)
+	serverMux.HandleFunc("POST /api/users", apiCfg.newUserHandleFunc)
 
 	server := http.Server{
 		Addr:    ":8080",
@@ -90,10 +92,48 @@ func (cfg *apiConfig) chirpGetHandleFunc(w http.ResponseWriter, r *http.Request)
 		ID   int    `json:"id"`
 		Body string `json:"body"`
 	}
+	i, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		respondWithError(w, 404, "Invalid ID")
+		return
+	}
+	c, err := cfg.db.GetChirp(i)
+	if err != nil {
+		respondWithError(w, 404, "That chirp does not exist")
+		return
+	}
+	respondWithJSON(w, 200, c)
+}
+
+func (cfg *apiConfig) chirpsGetAllHandleFunc(w http.ResponseWriter, r *http.Request) {
+	type chirpsListResp []struct {
+		ID   int    `json:"id"`
+		Body string `json:"body"`
+	}
 	c, err := cfg.db.GetChirps()
 	if err != nil {
 		respondWithError(w, 500, "Unable to access database")
 		return
 	}
 	respondWithJSON(w, 200, c)
+}
+
+func (cfg *apiConfig) newUserHandleFunc(w http.ResponseWriter, r *http.Request) {
+	type userReq struct {
+		Email string `json:"email"`
+	}
+	req := userReq{}
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&req)
+	if err != nil {
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+	chirp, err := cfg.db.CreateUser(req.Email)
+	if err != nil {
+		fmt.Println(err)
+		respondWithError(w, 500, "Unable to access database")
+		return
+	}
+	respondWithJSON(w, 201, chirp)
 }
