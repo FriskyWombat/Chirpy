@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -12,15 +11,18 @@ import (
 type apiConfig struct {
 	fileserverHits int
 	db             *database.DB
+	jwtSecret      string
+	polkaApiKey    string
 }
 
 // NewConfig Default constructor for apiConfig
-func newConfig() apiConfig {
-	d, err := database.NewDB("database.json")
-	fmt.Println(err)
+func newConfig(secret string, api_key string) apiConfig {
+	d, _ := database.NewDB("database.json")
 	return apiConfig{
 		fileserverHits: 0,
 		db:             d,
+		jwtSecret:      secret,
+		polkaApiKey:    api_key,
 	}
 }
 
